@@ -13,11 +13,30 @@ provider "aws" {
   region= var.region
 }
 
-#VPC
+
+#Data sources
+
+
+
+
+
+#VPC resource
 
 resource "aws_vpc" "my_vpc" {
   cidr_block = "10.0.0.0/16"
 }
+
+#Subnet resource
+
+resource "aws_subnet" "main" {
+  vpc_id     = aws_vpc.main.id
+  cidr_block = "10.0.1.0/24"
+
+  tags = {
+    Name = "Main"
+  }
+}
+
 
 #IAM Role
 
@@ -135,7 +154,7 @@ resource "aws_iam_role" "eks_cluster_role" {
 #Security Groups Resource
 
 
-#EKS CLUSTER Resource
+#EKS cluster  Resource
 
 resource "aws_eks_cluster" "my_test_cluster" {
 name     = var.cluster_name
