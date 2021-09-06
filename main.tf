@@ -8,8 +8,8 @@ variable "cluster_name" {
 
 
 provider "aws" {
-  access_key = "AKIARU7V64ZGRSNAAT45"
-  secret_key = "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"
+  #access_key = "AKIARU7V64ZGRSNAAT45"
+  #secret_key = "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"
   region     = var.region
 }
 
@@ -32,7 +32,7 @@ resource "aws_vpc" "eks_control_plane_vpc" {
 }
 
 resource "aws_vpc" "worker_nodes_vpc" {
-  cidr_block = "10.0.0.0/16"
+  cidr_block = "192.168.0.0/16"
 
   tags = {
     Name = "worker_nodes_vpc"
@@ -44,7 +44,7 @@ resource "aws_vpc" "worker_nodes_vpc" {
 
 resource "aws_subnet" "control_plane_subnet" {
   vpc_id     = aws_vpc.eks_control_plane_vpc.id
-  cidr_block = "10.0.1.0/24"
+  cidr_block = "10.0.1.0/16"
 
   tags = {
     Name = "Control Plane Subnet"
@@ -52,8 +52,8 @@ resource "aws_subnet" "control_plane_subnet" {
 }
 
 resource "aws_subnet" "worker_nodes_subnet" {
-  vpc_id     = aws_vpc.eks_control_plane_vpc.id
-  cidr_block = "10.0.1.0/24"
+  vpc_id     = aws_vpc.worker_nodes_vpc.id
+  cidr_block = "192.168.0.0/16"
 
   tags = {
     Name = "Worker Nodes Subnet"
@@ -209,7 +209,7 @@ resource "aws_iam_role_policy_attachment" "test-attach" {
 #Worker Nodes IAM Roles
 
 resource "aws_iam_role" "worker_nodes_iam_role" {
-  name = "eks_node_group"
+  name = "worker_nodes_iam_role"
 
   assume_role_policy = jsonencode({
     Statement = [{
@@ -239,10 +239,10 @@ resource "aws_iam_role_policy_attachment" "example-AmazonEC2ContainerRegistryRea
 }
 
 
-#EKS Worker Nodes Resource
+#EKS Worker Nodes ResourceS
 #Incomplete: cluster name not set, subnets not set
 
-resource "aws_eks_node_group" "eks_node_group" {
+/*resource "aws_eks_node_group" "eks_node_group" {
   cluster_name    = aws_eks_cluster.example.name
   node_group_name = "eric_node_group_test"
   node_role_arn   = aws_iam_role.worker_nodes_iam_role.arn
@@ -256,13 +256,13 @@ resource "aws_eks_node_group" "eks_node_group" {
 
   update_config {
     max_unavailable = 2
-  }
+  }*/
 
   # Ensure that IAM Role permissions are created before and deleted after EKS Node Group handling.
   # Otherwise, EKS will not be able to properly delete EC2 Instances and Elastic Network Interfaces.
-  depends_on = [
+/*  depends_on = [
     aws_iam_role_policy_attachment.example-AmazonEKSWorkerNodePolicy,
     aws_iam_role_policy_attachment.example-AmazonEKS_CNI_Policy,
     aws_iam_role_policy_attachment.example-AmazonEC2ContainerRegistryReadOnly,
   ]
-}
+}*/
