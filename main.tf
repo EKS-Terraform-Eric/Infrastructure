@@ -39,172 +39,96 @@ resource "aws_vpc" "worker_nodes_vpc" {
   }
 }
 
-#Subnet resources
-#Check cidr blocks!!!
+#Control Plane Subnet
 
 resource "aws_subnet" "control_plane_subnet" {
   vpc_id     = aws_vpc.eks_control_plane_vpc.id
-  cidr_block = "10.0.1.0/16"
+  cidr_block = "10.0.0.0/16"
 
   tags = {
     Name = "Control Plane Subnet"
   }
 }
 
+#Worker nodes subnet
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
 resource "aws_subnet" "worker_nodes_subnet" {
-  vpc_id     = aws_vpc.worker_nodes_vpc.id
-  cidr_block = "192.168.0.0/16"
+  count = 2
+
+  availability_zone = data.aws_availability_zones.available.names[count.index]
+  cidr_block        = cidrsubnet(aws_vpc.worker_nodes_vpc.cidr_block, 8, count.index)
+  vpc_id            = aws_vpc.worker_nodes_vpc.id
 
   tags = {
-    Name = "Worker Nodes Subnet"
+    "kubernetes.io/cluster/${aws_eks_cluster.eks_cluster.name}" = "shared"
   }
 }
 
 #EKS Cluster IAM Role resource
 
-resource "aws_iam_role" "eks_cluster_role" {
-  name = "eks_cluster_role"
+resource "aws_iam_role" "eks_cluster_iam_role" {
+  name = "eks_cluster_iam_role"
 
-  assume_role_policy = <<EOF
+  assume_role_policy = <<POLICY
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Action": "sts:AssumeRole",
-      "Principal": {
-        "Service": "ec2.amazonaws.com"
-      },
       "Effect": "Allow",
-      "Sid": ""
+      "Principal": {
+        "Service": "eks.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
     }
   ]
 }
-EOF
+POLICY
 }
 
-resource "aws_iam_policy" "eks_cluster_policy" {
-  name        = "eks_cluster_policy"
-  description = "An Amazon EKS Cluster policy"
-
-  policy = <<EOF
-{
-"Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "autoscaling:DescribeAutoScalingGroups",
-                "autoscaling:UpdateAutoScalingGroup",
-                "ec2:AttachVolume",
-                "ec2:AuthorizeSecurityGroupIngress",
-                "ec2:CreateRoute",
-                "ec2:CreateSecurityGroup",
-                "ec2:CreateTags",
-                "ec2:CreateVolume",
-                "ec2:DeleteRoute",
-                "ec2:DeleteSecurityGroup",
-                "ec2:DeleteVolume",
-                "ec2:DescribeInstances",
-                "ec2:DescribeRouteTables",
-                "ec2:DescribeSecurityGroups",
-                "ec2:DescribeSubnets",
-                "ec2:DescribeVolumes",
-                "ec2:DescribeVolumesModifications",
-                "ec2:DescribeVpcs",
-                "ec2:DescribeDhcpOptions",
-                "ec2:DescribeNetworkInterfaces",
-                "ec2:DetachVolume",
-                "ec2:ModifyInstanceAttribute",
-                "ec2:ModifyVolume",
-                "ec2:RevokeSecurityGroupIngress",
-                "ec2:DescribeAccountAttributes",
-                "ec2:DescribeAddresses",
-                "ec2:DescribeInternetGateways",
-                "elasticloadbalancing:AddTags",
-                "elasticloadbalancing:ApplySecurityGroupsToLoadBalancer",
-                "elasticloadbalancing:AttachLoadBalancerToSubnets",
-                "elasticloadbalancing:ConfigureHealthCheck",
-                "elasticloadbalancing:CreateListener",
-                "elasticloadbalancing:CreateLoadBalancer",
-                "elasticloadbalancing:CreateLoadBalancerListeners",
-                "elasticloadbalancing:CreateLoadBalancerPolicy",
-                "elasticloadbalancing:CreateTargetGroup",
-                "elasticloadbalancing:DeleteListener",
-                "elasticloadbalancing:DeleteLoadBalancer",
-                "elasticloadbalancing:DeleteLoadBalancerListeners",
-                "elasticloadbalancing:DeleteTargetGroup",
-                "elasticloadbalancing:DeregisterInstancesFromLoadBalancer",
-                "elasticloadbalancing:DeregisterTargets",
-                "elasticloadbalancing:DescribeListeners",
-                "elasticloadbalancing:DescribeLoadBalancerAttributes",
-                "elasticloadbalancing:DescribeLoadBalancerPolicies",
-                "elasticloadbalancing:DescribeLoadBalancers",
-                "elasticloadbalancing:DescribeTargetGroupAttributes",
-                "elasticloadbalancing:DescribeTargetGroups",
-                "elasticloadbalancing:DescribeTargetHealth",
-                "elasticloadbalancing:DetachLoadBalancerFromSubnets",
-                "elasticloadbalancing:ModifyListener",
-                "elasticloadbalancing:ModifyLoadBalancerAttributes",
-                "elasticloadbalancing:ModifyTargetGroup",
-                "elasticloadbalancing:ModifyTargetGroupAttributes",
-                "elasticloadbalancing:RegisterInstancesWithLoadBalancer",
-                "elasticloadbalancing:RegisterTargets",
-                "elasticloadbalancing:SetLoadBalancerPoliciesForBackendServer",
-                "elasticloadbalancing:SetLoadBalancerPoliciesOfListener",
-                "kms:DescribeKey"
-            ],
-            "Resource": "*"
-        },
-        {
-            "Effect": "Allow",
-            "Action": "iam:CreateServiceLinkedRole",
-            "Resource": "*",
-            "Condition": {
-                "StringEquals": {
-                    "iam:AWSServiceName": "elasticloadbalancing.amazonaws.com"
-                }
-            }
-        }
-    ]
-}
-EOF
+resource "aws_iam_role_policy_attachment" "example-AmazonEKSClusterPolicy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+  role       = aws_iam_role.eks_cluster_iam_role.name
 }
 
-resource "aws_iam_role_policy_attachment" "test-attach" {
-  role       = aws_iam_role.eks_cluster_role.name
-  policy_arn = aws_iam_policy.eks_cluster_policy.arn
+# Optionally, enable Security Groups for Pods
+# Reference: https://docs.aws.amazon.com/eks/latest/userguide/security-groups-for-pods.html
+resource "aws_iam_role_policy_attachment" "example-AmazonEKSVPCResourceController" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSVPCResourceController"
+  role       = aws_iam_role.eks_cluster_iam_role.name
 }
 
-
-#Security Groups Resource
 
 
 #EKS cluster  Resource
 
-#resource "aws_eks_cluster" "my_test_cluster" {
-#name     = var.cluster_name
-#  role_arn = aws_iam_role.my_test_cluster.arn
-#
-#  vpc_config {
-#    subnet_ids = [aws_subnet.example1.id, aws_subnet.example2.id]
-#  }
-#
-#  # Ensure that IAM Role permissions are created before and deleted after EKS Cluster handling.
-#  # Otherwise, EKS will not be able to properly delete EKS managed EC2 infrastructure such as Security Groups.
-#  depends_on = [
-#    aws_iam_role_policy_attachment.example-AmazonEKSClusterPolicy,
-#    aws_iam_role_policy_attachment.example-AmazonEKSVPCResourceController,
-#  ]
-#}
-#
-#output "endpoint" {
-#  value = aws_eks_cluster.my_test_cluster.endpoint
-#}
-#
-#output "kubeconfig-certificate-authority-data" {
-#  value = aws_eks_cluster.my_test_cluster.certificate_authority[0].data
-#}
-#}
+resource "aws_eks_cluster" "eks_cluster" {
+  name     = "eric_eks_cluster"
+  role_arn = aws_iam_role.eks_cluster_iam_role.arn
+
+  vpc_config {
+    subnet_ids = [aws_subnet.control_plane_subnet.id, aws_subnet.control_plane_subnet.id]
+  }
+
+  # Ensure that IAM Role permissions are created before and deleted after EKS Cluster handling.
+  # Otherwise, EKS will not be able to properly delete EKS managed EC2 infrastructure such as Security Groups.
+  depends_on = [
+    aws_iam_role_policy_attachment.example-AmazonEKSClusterPolicy,
+    aws_iam_role_policy_attachment.example-AmazonEKSVPCResourceController,
+  ]
+}
+
+output "endpoint" {
+  value = aws_eks_cluster.eks_cluster.endpoint
+}
+
+output "kubeconfig-certificate-authority-data" {
+  value = aws_eks_cluster.eks_cluster.certificate_authority[0].data
+}
+
 
 #Worker Nodes IAM Roles
 
@@ -242,11 +166,11 @@ resource "aws_iam_role_policy_attachment" "example-AmazonEC2ContainerRegistryRea
 #EKS Worker Nodes ResourceS
 #Incomplete: cluster name not set, subnets not set
 
-/*resource "aws_eks_node_group" "eks_node_group" {
-  cluster_name    = aws_eks_cluster.example.name
+  resource "aws_eks_node_group" "eks_node_group" {
+  cluster_name    = aws_eks_cluster.eks_cluster.name
   node_group_name = "eric_node_group_test"
   node_role_arn   = aws_iam_role.worker_nodes_iam_role.arn
-  subnet_ids      = aws_subnet.example[*].id
+  subnet_ids      = aws_subnet.worker_nodes_subnet[*].id
 
   scaling_config {
     desired_size = 1
@@ -256,13 +180,13 @@ resource "aws_iam_role_policy_attachment" "example-AmazonEC2ContainerRegistryRea
 
   update_config {
     max_unavailable = 2
-  }*/
+  }
 
   # Ensure that IAM Role permissions are created before and deleted after EKS Node Group handling.
   # Otherwise, EKS will not be able to properly delete EC2 Instances and Elastic Network Interfaces.
-/*  depends_on = [
+    depends_on = [
     aws_iam_role_policy_attachment.example-AmazonEKSWorkerNodePolicy,
     aws_iam_role_policy_attachment.example-AmazonEKS_CNI_Policy,
     aws_iam_role_policy_attachment.example-AmazonEC2ContainerRegistryReadOnly,
   ]
-}*/
+}
