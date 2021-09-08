@@ -1,9 +1,12 @@
+data "aws_availability_zones" "available" {}
+
 variable "region" {
   default = "us-east-2"
 }
 
 variable "cluster_name" {
-  default = ""
+  default = "terraform_eks_eric"
+  type= "string"
 }
 
 
@@ -19,54 +22,57 @@ provider "aws" {
 
 
 #VPC resource
-#2 vpcs are needed, one for the EKS Control Plane and another for the worker nodes
-#Check Cidr blocks!!!
 
-
-resource "aws_vpc" "eks_control_plane_vpc" {
+resource "aws_vpc" "eks_vpc" {
   cidr_block = "10.0.0.0/16"
 
-  tags = {
-    Name = "eks_control_plane_vpc"
-  }
+  tags = "${
+     map(
+      "Name", "terraform-eks-node",
+      "kubernetes.io/cluster/${var.cluster_name}", "shared",
+     )
+   }"
 }
 
-resource "aws_vpc" "worker_nodes_vpc" {
-  cidr_block = "192.168.0.0/16"
-
-  tags = {
-    Name = "worker_nodes_vpc"
-  }
-}
-
-#Control Plane Subnet
-
-resource "aws_subnet" "control_plane_subnet" {
-  vpc_id     = aws_vpc.eks_control_plane_vpc.id
-  cidr_block = "10.0.0.0/16"
-
-  tags = {
-    Name = "Control Plane Subnet"
-  }
-}
-
-#Worker nodes subnet
-
-data "aws_availability_zones" "available" {
-  state = "available"
-}
-
-resource "aws_subnet" "worker_nodes_subnet" {
+resource "aws_subnet" "eks_subnet" {
   count = 2
 
-  availability_zone = data.aws_availability_zones.available.names[count.index]
-  cidr_block        = cidrsubnet(aws_vpc.worker_nodes_vpc.cidr_block, 8, count.index)
-  vpc_id            = aws_vpc.worker_nodes_vpc.id
+  availability_zone = "${data.aws_availability_zones.available.names[count.index]}"
+  cidr_block        = "10.0.${count.index}.0/24"
+  vpc_id            = "${aws_vpc.eks_vpc.id}"
+
+  tags = "${
+    map(
+     "Name", "terraform-eks-node",
+     "kubernetes.io/cluster/${var.cluster_name}", "shared",
+    )
+  }"
+}
+
+resource "aws_internet_gateway" "eks_internet_gateway" {
+  vpc_id = "${aws_vpc.eks_vpc.id}"
 
   tags = {
-    "kubernetes.io/cluster/${aws_eks_cluster.eks_cluster.name}" = "shared"
+    Name = "terraform-eks-demo"
   }
 }
+
+resource "aws_route_table" "eks_route_table" {
+  vpc_id = "${aws_vpc.eks_vpc.id}"
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = "${aws_internet_gateway.eks_internet_gateway.id}"
+  }
+}
+
+resource "aws_route_table_association" "route_table_association" {
+  count = 2
+
+  subnet_id      = "${aws_subnet.eks_subnet.*.id[count.index]}"
+  route_table_id = "${aws_route_table.eks_route_table.id}"
+}
+
 
 #EKS Cluster IAM Role resource
 
@@ -101,7 +107,38 @@ resource "aws_iam_role_policy_attachment" "example-AmazonEKSVPCResourceControlle
   role       = aws_iam_role.eks_cluster_iam_role.name
 }
 
+#EKS Cluster Security group
+#Controls Access to Kubernetes master nodes
 
+resource "aws_security_group" "master_nodes_sg" {
+  name        = "master_nodes_sg"
+  vpc_id      = aws_vpc.eks_vpc.id
+
+  ingress = [
+    {
+      description      = "TLS from VPC"
+      from_port        = 443
+      to_port          = 443
+      protocol         = "tcp"
+      cidr_blocks      = [aws_vpc.eks_vpc.cidr_block]
+      ipv6_cidr_blocks = [aws_vpc.eks_vpc.ipv6_cidr_block]
+    }
+  ]
+
+  egress = [
+    {
+      from_port        = 0
+      to_port          = 0
+      protocol         = "-1"
+      cidr_blocks      = ["0.0.0.0/0"]
+      ipv6_cidr_blocks = ["::/0"]
+    }
+  ]
+
+  tags = {
+  Name = "master_nodes_sg"
+}
+}
 
 #EKS cluster  Resource
 
@@ -110,6 +147,7 @@ resource "aws_eks_cluster" "eks_cluster" {
   role_arn = aws_iam_role.eks_cluster_iam_role.arn
 
   vpc_config {
+    security_group_ids = [aws_security_group.master_nodes_sg.id]
     subnet_ids = [aws_subnet.control_plane_subnet.id, aws_subnet.control_plane_subnet.id]
   }
 
