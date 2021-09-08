@@ -16,7 +16,6 @@ provider "aws" {
   region     = var.region
 }
 
-
 #Data sources
 
 
@@ -26,51 +25,48 @@ provider "aws" {
 resource "aws_vpc" "eks_vpc" {
   cidr_block = "10.0.0.0/16"
 
-  tags = "${
+  tags =
      map(
-      "Name", "terraform-eks-node",
-      "kubernetes.io/cluster/${var.cluster_name}", "shared",
+       Name = "terraform-eks-vpc",
+      "kubernetes.io/cluster/var.cluster_name" = "shared",
      )
-   }"
 }
-
 resource "aws_subnet" "eks_subnet" {
   count = 2
 
-  availability_zone = "${data.aws_availability_zones.available.names[count.index]}"
+  availability_zone = data.aws_availability_zones.available.names[count.index]
   cidr_block        = "10.0.${count.index}.0/24"
-  vpc_id            = "${aws_vpc.eks_vpc.id}"
+  vpc_id            = aws_vpc.eks_vpc.id
 
-  tags = "${
+  tags =
     map(
-     "Name", "terraform-eks-node",
-     "kubernetes.io/cluster/${var.cluster_name}", "shared",
+     Name = "terraform-eks-subnet",
+     "kubernetes.io/cluster/${var.cluster_name}" = "shared",
     )
-  }"
 }
 
 resource "aws_internet_gateway" "eks_internet_gateway" {
-  vpc_id = "${aws_vpc.eks_vpc.id}"
+  vpc_id = aws_vpc.eks_vpc.id
 
   tags = {
-    Name = "terraform-eks-demo"
+    Name = "terraform-eks-igw"
   }
 }
 
 resource "aws_route_table" "eks_route_table" {
-  vpc_id = "${aws_vpc.eks_vpc.id}"
+  vpc_id = aws_vpc.eks_vpc.id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = "${aws_internet_gateway.eks_internet_gateway.id}"
+    gateway_id = aws_internet_gateway.eks_internet_gateway.id
   }
 }
 
 resource "aws_route_table_association" "route_table_association" {
   count = 2
 
-  subnet_id      = "${aws_subnet.eks_subnet.*.id[count.index]}"
-  route_table_id = "${aws_route_table.eks_route_table.id}"
+  subnet_id      = aws_subnet.eks_subnet[*].id[count.index]
+  route_table_id = aws_route_table.eks_route_table.id
 }
 
 
@@ -95,14 +91,14 @@ resource "aws_iam_role" "eks_cluster_iam_role" {
 POLICY
 }
 
-resource "aws_iam_role_policy_attachment" "example-AmazonEKSClusterPolicy" {
+resource "aws_iam_role_policy_attachment" "AmazonEKSClusterPolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
   role       = aws_iam_role.eks_cluster_iam_role.name
 }
 
 # Optionally, enable Security Groups for Pods
 # Reference: https://docs.aws.amazon.com/eks/latest/userguide/security-groups-for-pods.html
-resource "aws_iam_role_policy_attachment" "example-AmazonEKSVPCResourceController" {
+resource "aws_iam_role_policy_attachment" "AmazonEKSVPCResourceController" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSVPCResourceController"
   role       = aws_iam_role.eks_cluster_iam_role.name
 }
@@ -148,14 +144,14 @@ resource "aws_eks_cluster" "eks_cluster" {
 
   vpc_config {
     security_group_ids = [aws_security_group.master_nodes_sg.id]
-    subnet_ids = [aws_subnet.control_plane_subnet.id, aws_subnet.control_plane_subnet.id]
+    subnet_ids = [aws_subnet.eks_subnet[*].id]
   }
 
   # Ensure that IAM Role permissions are created before and deleted after EKS Cluster handling.
   # Otherwise, EKS will not be able to properly delete EKS managed EC2 infrastructure such as Security Groups.
   depends_on = [
-    aws_iam_role_policy_attachment.example-AmazonEKSClusterPolicy,
-    aws_iam_role_policy_attachment.example-AmazonEKSVPCResourceController,
+    aws_iam_role_policy_attachment.AmazonEKSClusterPolicy,
+    aws_iam_role_policy_attachment.AmazonEKSVPCResourceController,
   ]
 }
 
@@ -185,17 +181,17 @@ resource "aws_iam_role" "worker_nodes_iam_role" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "example-AmazonEKSWorkerNodePolicy" {
+resource "aws_iam_role_policy_attachment" "AmazonEKSWorkerNodePolicy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
   role       = aws_iam_role.worker_nodes_iam_role.name
 }
 
-resource "aws_iam_role_policy_attachment" "example-AmazonEKS_CNI_Policy" {
+resource "aws_iam_role_policy_attachment" "AmazonEKS_CNI_Policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
   role       = aws_iam_role.worker_nodes_iam_role.name
 }
 
-resource "aws_iam_role_policy_attachment" "example-AmazonEC2ContainerRegistryReadOnly" {
+resource "aws_iam_role_policy_attachment" "AmazonEC2ContainerRegistryReadOnly" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
   role       = aws_iam_role.worker_nodes_iam_role.name
 }
@@ -208,7 +204,7 @@ resource "aws_iam_role_policy_attachment" "example-AmazonEC2ContainerRegistryRea
   cluster_name    = aws_eks_cluster.eks_cluster.name
   node_group_name = "eric_node_group_test"
   node_role_arn   = aws_iam_role.worker_nodes_iam_role.arn
-  subnet_ids      = aws_subnet.worker_nodes_subnet[*].id
+  subnet_ids      = aws_subnet.eks_subnet[*].id
 
   scaling_config {
     desired_size = 1
@@ -223,8 +219,8 @@ resource "aws_iam_role_policy_attachment" "example-AmazonEC2ContainerRegistryRea
   # Ensure that IAM Role permissions are created before and deleted after EKS Node Group handling.
   # Otherwise, EKS will not be able to properly delete EC2 Instances and Elastic Network Interfaces.
     depends_on = [
-    aws_iam_role_policy_attachment.example-AmazonEKSWorkerNodePolicy,
-    aws_iam_role_policy_attachment.example-AmazonEKS_CNI_Policy,
-    aws_iam_role_policy_attachment.example-AmazonEC2ContainerRegistryReadOnly,
+    aws_iam_role_policy_attachment.AmazonEKSWorkerNodePolicy,
+    aws_iam_role_policy_attachment.AmazonEKS_CNI_Policy,
+    aws_iam_role_policy_attachment.AmazonEC2ContainerRegistryReadOnly,
   ]
 }
