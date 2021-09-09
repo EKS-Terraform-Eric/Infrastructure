@@ -39,6 +39,7 @@ resource "aws_vpc" "eks_vpc" {
     )
   }"
 }
+
 resource "aws_subnet" "eks_subnet" {
   count = 2
 
@@ -46,12 +47,13 @@ resource "aws_subnet" "eks_subnet" {
   cidr_block        = "10.0.${count.index}.0/24"
   vpc_id            = aws_vpc.eks_vpc.id
 
-  tags =
-    map(
-     Name = "terraform-eks-subnet",
-     "kubernetes.io/cluster/${var.cluster_name}" = "shared",
-    )
-}
+  tags = "${
+     map(
+      "Name", "terraform-eks-subnet",
+      "kubernetes.io/cluster/${var.cluster_name}", "shared",
+     )
+   }"
+ }
 
 resource "aws_internet_gateway" "eks_internet_gateway" {
   vpc_id = aws_vpc.eks_vpc.id
