@@ -33,7 +33,7 @@ resource "aws_vpc" "eks_vpc" {
  # }
 
  tags = "${
-    map(
+    tomap(
      "Name", "terraform-eks-vpc",
      "kubernetes.io/cluster/${var.cluster_name}", "shared",
     )
@@ -48,7 +48,7 @@ resource "aws_subnet" "eks_subnet" {
   vpc_id            = aws_vpc.eks_vpc.id
 
   tags = "${
-     map(
+     tomap(
       "Name", "terraform-eks-subnet",
       "kubernetes.io/cluster/${var.cluster_name}", "shared",
      )
