@@ -27,8 +27,8 @@ resource "aws_vpc" "eks_vpc" {
 
   tags = {
      map(
-       Name = terraform-eks-vpc
-      kubernetes.io/cluster/var.cluster_name = "shared"
+       Name = terraform-eks-vpc,
+       kubernetes.io/cluster/var.cluster_name = "shared"
      )
   }
 }
