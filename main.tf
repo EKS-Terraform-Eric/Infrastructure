@@ -74,7 +74,7 @@ resource "aws_route_table" "eks_route_table" {
 resource "aws_route_table_association" "route_table_association" {
   count = 2
 
-  subnet_id      = aws_subnet.eks_subnet[*].id[count.index]
+  subnet_id      = "${aws_subnet.eks_subnet.*.id[count.index]}"
   route_table_id = aws_route_table.eks_route_table.id
 }
 
@@ -127,16 +127,23 @@ resource "aws_security_group" "master_nodes_sg" {
       protocol         = "tcp"
       cidr_blocks      = [aws_vpc.eks_vpc.cidr_block]
       ipv6_cidr_blocks = [aws_vpc.eks_vpc.ipv6_cidr_block]
+      prefix_list_ids  = []
+      security_groups  = []
+      self             = false
     }
   ]
 
   egress = [
-    {
+    { 
+      description      = "HTTP"
       from_port        = 0
       to_port          = 0
       protocol         = "-1"
       cidr_blocks      = ["0.0.0.0/0"]
       ipv6_cidr_blocks = ["::/0"]
+      prefix_list_ids  = []
+      security_groups  = []
+      self             = false
     }
   ]
 
