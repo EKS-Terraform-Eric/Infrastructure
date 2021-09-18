@@ -126,7 +126,7 @@ resource "aws_security_group" "master_nodes_sg" {
       to_port          = 443
       protocol         = "tcp"
       cidr_blocks      = [aws_vpc.eks_vpc.cidr_block]
-      ipv6_cidr_blocks = [aws_vpc.eks_vpc.ipv6_cidr_block]
+      ipv6_cidr_blocks = []
       prefix_list_ids  = []
       security_groups  = []
       self             = false
@@ -140,7 +140,7 @@ resource "aws_security_group" "master_nodes_sg" {
       to_port          = 0
       protocol         = "-1"
       cidr_blocks      = ["0.0.0.0/0"]
-      ipv6_cidr_blocks = ["::/0"]
+      ipv6_cidr_blocks = []
       prefix_list_ids  = []
       security_groups  = []
       self             = false
@@ -160,7 +160,7 @@ resource "aws_eks_cluster" "eks_cluster" {
 
   vpc_config {
     security_group_ids = [aws_security_group.master_nodes_sg.id]
-    subnet_ids = [aws_subnet.eks_subnet[*].id]
+    subnet_ids = aws_subnet.eks_subnet.*.id
   }
 
   # Ensure that IAM Role permissions are created before and deleted after EKS Cluster handling.
@@ -220,7 +220,7 @@ resource "aws_iam_role_policy_attachment" "AmazonEC2ContainerRegistryReadOnly" {
   cluster_name    = aws_eks_cluster.eks_cluster.name
   node_group_name = "eric_node_group_test"
   node_role_arn   = aws_iam_role.worker_nodes_iam_role.arn
-  subnet_ids      = aws_subnet.eks_subnet[*].id
+  subnet_ids      = aws_subnet.eks_subnet.*.id
 
   scaling_config {
     desired_size = 1
