@@ -134,7 +134,7 @@ resource "aws_security_group" "master_nodes_sg" {
   ]
 
   egress = [
-    { 
+    {
       description      = "HTTP"
       from_port        = 0
       to_port          = 0
@@ -223,13 +223,13 @@ resource "aws_iam_role_policy_attachment" "AmazonEC2ContainerRegistryReadOnly" {
   subnet_ids      = aws_subnet.eks_subnet[*].id
 
   scaling_config {
-    desired_size = 1
-    max_size     = 1
-    min_size     = 1
+    desired_size = 2
+    max_size     = 3
+    min_size     = 2
   }
 
   update_config {
-    max_unavailable = 2
+    max_unavailable = 1
   }
 
   # Ensure that IAM Role permissions are created before and deleted after EKS Node Group handling.
