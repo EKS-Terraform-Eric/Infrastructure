@@ -4,6 +4,11 @@ variable "region" {
   default = "us-east-2"
 }
 
+variable "ami_id"{
+  default= "ami-00399ec92321828f5"
+  type = string
+}
+
 variable "cluster_name" {
   default = "terraform_eks_eric"
   type= string
@@ -213,8 +218,33 @@ resource "aws_iam_role_policy_attachment" "AmazonEC2ContainerRegistryReadOnly" {
 }
 
 
-#EKS Worker Nodes ResourceS
-#Incomplete: cluster name not set, subnets not set
+#EKS Worker Nodes Resources
+
+resource "aws_launch_template" "eks_launch_template" {
+  name = "eks_launch_template"
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+
+    ebs {
+      volume_size = 2
+      volume_type = "gp2"
+    }
+  }
+
+  image_id = var.ami_id
+  instance_type = "t2.micro"
+  #user_data = filebase64("${path.module}/eks-user-data.sh")
+
+  tag_specifications {
+    resource_type = "instance"
+
+    tags = {
+      Name = "eks_managed_node"
+    }
+  }
+}
+
 
   resource "aws_eks_node_group" "eks_node_group" {
   cluster_name    = aws_eks_cluster.eks_cluster.name
@@ -230,6 +260,11 @@ resource "aws_iam_role_policy_attachment" "AmazonEC2ContainerRegistryReadOnly" {
 
   update_config {
     max_unavailable = 1
+  }
+
+  launch_template {
+    name = aws_launch_template.eks_launch_template.name
+    version = aws_launch_template.eks_launch_template.latest_version
   }
 
   # Ensure that IAM Role permissions are created before and deleted after EKS Node Group handling.
