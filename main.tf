@@ -25,7 +25,7 @@ provider "aws" {
 
 
 
-#VPC resource
+#----------- VPC Resource ----------------
 
 resource "aws_vpc" "eks_vpc" {
   cidr_block = "10.0.0.0/16"
@@ -47,7 +47,7 @@ resource "aws_subnet" "eks_subnet" {
   availability_zone = data.aws_availability_zones.available.names[count.index]
   cidr_block        = "10.0.${count.index}.0/24"
   vpc_id            = aws_vpc.eks_vpc.id
- 
+
   #assign public ip addresses into the subnet
   map_public_ip_on_launch = true
 
@@ -88,7 +88,7 @@ resource "aws_route_table_association" "route_table_association" {
 }
 
 
-#EKS Cluster IAM Role resource
+#---------------- EKS Cluster IAM Role Resource ----------------
 
 resource "aws_iam_role" "eks_cluster_iam_role" {
   name = "eks_cluster_iam_role"
@@ -121,11 +121,11 @@ resource "aws_iam_role_policy_attachment" "AmazonEKSVPCResourceController" {
   role       = aws_iam_role.eks_cluster_iam_role.name
 }
 
-#EKS Cluster Security group
-#Controls Access to Kubernetes master nodes
+#----------------- EKS Cluster Security Group ----------------
+#Controls Access to Kubernetes master cluster
 
-resource "aws_security_group" "master_nodes_sg" {
-  name        = "master_nodes_sg"
+resource "aws_security_group" "master_cluster_sg" {
+  name        = "master_cluster_sg"
   vpc_id      = aws_vpc.eks_vpc.id
 
   ingress = [
@@ -157,18 +157,18 @@ resource "aws_security_group" "master_nodes_sg" {
   ]
 
   tags = {
-  Name = "master_nodes_sg"
+  Name = "master_cluster_sg"
 }
 }
 
-#EKS cluster  Resource
+#--------------- EKS Cluster Resource ----------------
 
 resource "aws_eks_cluster" "eks_cluster" {
   name     = "eric_eks_cluster"
   role_arn = aws_iam_role.eks_cluster_iam_role.arn
 
   vpc_config {
-    security_group_ids = [aws_security_group.master_nodes_sg.id]
+    security_group_ids = [aws_security_group.master_cluster_sg.id]
     subnet_ids = aws_subnet.eks_subnet.*.id
   }
 
@@ -189,7 +189,7 @@ output "kubeconfig-certificate-authority-data" {
 }
 
 
-#Worker Nodes IAM Roles
+#----------- Worker Nodes IAM Roles ----------------
 
 resource "aws_iam_role" "worker_nodes_iam_role" {
   name = "worker_nodes_iam_role"
@@ -221,9 +221,53 @@ resource "aws_iam_role_policy_attachment" "AmazonEC2ContainerRegistryReadOnly" {
   role       = aws_iam_role.worker_nodes_iam_role.name
 }
 
+#----------------- EKS Worker Nodes Security Group ------------
 
-#EKS Worker Nodes Resources
+resource "aws_security_group" "worker_node_security_group" {
+  name        = "terraform-eks-demo-node"
+  description = "Security group for all nodes in the cluster"
+  vpc_id      = aws_vpc.eks_vpc.id
 
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  resource "aws_security_group_rule" "node-self-ingress" {
+    description              = "Allows the nodes to communicate with each other"
+    from_port                = 0
+    protocol                 = "-1"
+    security_group_id        = aws_security_group.worker_node_security_group.id
+    source_security_group_id = aws_security_group.worker_node_security_group.id
+    to_port                  = 65535
+    type                     = "ingress"
+  }
+
+  resource "aws_security_group_rule" "node-ingress-cluster-https" {
+    description              = "Allows worker Kubelets and pods to receive communication from the cluster control plane"
+    from_port                = 443
+    protocol                 = "tcp"
+    security_group_id        = aws_security_group.worker_node_security_group.id
+    source_security_group_id = aws_security_group.master_cluster_sg.id
+    to_port                  = 443
+    type                     = "ingress"
+  }
+
+  resource "aws_security_group_rule" "demo-node-ingress-cluster-others" {
+    description              = "Allow worker Kubelets and pods to receive communication from the cluster control plane"
+    from_port                = 1025
+    protocol                 = "tcp"
+    security_group_id        = aws_security_group.worker_node_security_group.id
+    source_security_group_id = aws_security_group.master_cluster_sg.id
+    to_port                  = 65535
+    type                     = "ingress"
+  }
+#------------------ EKS Worker Nodes Resources ----------------
+
+
+#This creates the template for the worker nodes to be provisioned
 resource "aws_launch_template" "eks_launch_template" {
   name = "eks_launch_template"
 
@@ -238,7 +282,6 @@ resource "aws_launch_template" "eks_launch_template" {
 
   image_id = var.ami_id
   instance_type = "t2.micro"
-  #user_data = filebase64("${path.module}/eks-user-data.sh")
 
   tag_specifications {
     resource_type = "instance"
@@ -249,6 +292,11 @@ resource "aws_launch_template" "eks_launch_template" {
   }
 }
 
+
+#This resource creates the worker nodes in the cluster using the template
+#from the previous resource
+
+#AUTO SCALING GROUP?
 
   resource "aws_eks_node_group" "eks_node_group" {
   cluster_name    = aws_eks_cluster.eks_cluster.name
