@@ -239,6 +239,7 @@ resource "aws_security_group" "worker_node_security_group" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+}
 
   resource "aws_security_group_rule" "node-self-ingress" {
     description              = "Allows the nodes to communicate with each other"
