@@ -312,7 +312,7 @@ resource "aws_autoscaling_group" "eric_eks_autoscaling_group" {
   max_size             = 2
   min_size             = 1
   name                 = "eric_eks_autoscaling_group"
-  vpc_zone_identifier  = [aws_subnet.eks_subnet.*.id]
+  vpc_zone_identifier  = aws_subnet.eks_subnet.*.id
 
   tag {
     key                 = "Name"
