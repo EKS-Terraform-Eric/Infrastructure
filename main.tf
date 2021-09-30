@@ -89,6 +89,8 @@ resource "aws_route_table_association" "route_table_association" {
 
 
 #---------------- EKS Cluster IAM Role Resource ----------------
+#This IAM role allows the EKS service to manage and retrieve data from
+#other AWS services
 
 resource "aws_iam_role" "eks_cluster_iam_role" {
   name = "eks_cluster_iam_role"
@@ -122,7 +124,7 @@ resource "aws_iam_role_policy_attachment" "AmazonEKSVPCResourceController" {
 }
 
 #----------------- EKS Cluster Security Group ----------------
-#Controls Access to Kubernetes master cluster
+#Controls Access to Kubernetes masters
 
 resource "aws_security_group" "master_cluster_sg" {
   name        = "master_cluster_sg"
@@ -190,6 +192,8 @@ output "kubeconfig-certificate-authority-data" {
 
 
 #----------- Worker Nodes IAM Roles ----------------
+#This IAM role allows the worker nodes to manage or retrieve data
+#from other AWS services
 
 resource "aws_iam_role" "worker_nodes_iam_role" {
   name = "worker_nodes_iam_role"
@@ -222,9 +226,10 @@ resource "aws_iam_role_policy_attachment" "AmazonEC2ContainerRegistryReadOnly" {
 }
 
 #----------------- EKS Worker Nodes Security Group ------------
+#Security group that controls networking access to the Kubernetes worker nodes
 
 resource "aws_security_group" "worker_node_security_group" {
-  name        = "terraform-eks-demo-node"
+  name        = "worker_node_security_group"
   description = "Security group for all nodes in the cluster"
   vpc_id      = aws_vpc.eks_vpc.id
 
@@ -268,6 +273,7 @@ resource "aws_security_group" "worker_node_security_group" {
 
 
 #This creates the template for the worker nodes to be provisioned
+
 resource "aws_launch_template" "eks_launch_template" {
   name = "eks_launch_template"
 
@@ -293,37 +299,35 @@ resource "aws_launch_template" "eks_launch_template" {
 }
 
 
-#This resource creates the worker nodes in the cluster using the template
+
+
+#-----------------  Auto-scaling group resource ---------------------
+
+#This resource creates the auto-scaling group in the cluster using the template
 #from the previous resource
 
-#AUTO SCALING GROUP?
+resource "aws_autoscaling_group" "eric_eks_autoscaling_group" {
+  desired_capacity     = 2
+  max_size             = 2
+  min_size             = 1
+  name                 = "eric_eks_autoscaling_group"
+  vpc_zone_identifier  = ["${aws_subnet.eks_subnet.*.id}"]
 
-  resource "aws_eks_node_group" "eks_node_group" {
-  cluster_name    = aws_eks_cluster.eks_cluster.name
-  node_group_name = "eric_node_group_test"
-  node_role_arn   = aws_iam_role.worker_nodes_iam_role.arn
-  subnet_ids      = aws_subnet.eks_subnet.*.id
-
-  scaling_config {
-    desired_size = 2
-    max_size     = 3
-    min_size     = 2
+  tag {
+    key                 = "Name"
+    value               = "eric_eks_autoscaling_group"
+    propagate_at_launch = true
   }
 
-  update_config {
-    max_unavailable = 1
+  tag {
+    key                 = "kubernetes.io/cluster/${var.cluster_name}"
+    value               = "owned"
+    propagate_at_launch = true
   }
 
   launch_template {
-    name = aws_launch_template.eks_launch_template.name
-    version = aws_launch_template.eks_launch_template.latest_version
-  }
+      id      = aws_launch_template.eks_launch_template.id
+      version = "$Latest"
+    }
 
-  # Ensure that IAM Role permissions are created before and deleted after EKS Node Group handling.
-  # Otherwise, EKS will not be able to properly delete EC2 Instances and Elastic Network Interfaces.
-    depends_on = [
-    aws_iam_role_policy_attachment.AmazonEKSWorkerNodePolicy,
-    aws_iam_role_policy_attachment.AmazonEKS_CNI_Policy,
-    aws_iam_role_policy_attachment.AmazonEC2ContainerRegistryReadOnly,
-  ]
 }
